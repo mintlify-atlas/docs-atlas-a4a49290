@@ -1,0 +1,273 @@
+---
+title: Installation
+description: Build and run Reforestation Saga on your iOS device
+---
+
+## Prerequisites
+
+Before building Reforestation Saga, ensure you have the following:
+
+<Steps>
+  <Step title="macOS Computer">
+    Required to run Xcode and build iOS applications
+  </Step>
+  <Step title="Xcode 13.0 or Later">
+    Download from the Mac App Store or [Apple Developer](https://developer.apple.com/xcode/)
+  </Step>
+  <Step title="iOS Device with Camera">
+    iPhone X or later recommended for optimal face tracking performance
+  </Step>
+  <Step title="Apple Developer Account">
+    Free account sufficient for testing on your own device
+  </Step>
+</Steps>
+
+<Note>
+  While the game can run in the iOS Simulator, eye blink detection requires a physical device with a camera. Simulator builds will not provide the full gameplay experience.
+</Note>
+
+## Project Structure
+
+The Reforestation Saga source code is organized as follows:
+
+```bash
+ReforestationSaga/
+├── ReforestationSaga_App.swift    # App entry point with EyeBlinkDetectorVision setup
+├── ContentView.swift              # Root view managing GameData state
+├── Home/
+│   └── HomeView.swift            # Landing screen with story intro
+├── Game/
+│   └── GameView.swift            # Main gameplay view with SpriteKit integration
+└── EyeBlinkDetectorVision.swift  # Vision framework eye detection logic
+```
+
+## Build Instructions
+
+### Step 1: Clone or Download the Project
+
+Navigate to your workspace directory:
+
+```bash
+cd ~/workspace/source/ReforestationSaga
+```
+
+### Step 2: Open in Xcode
+
+Open the Xcode project file:
+
+```bash
+open ReforestationSaga.xcodeproj
+```
+
+Or launch Xcode and select **File > Open**, then navigate to the project directory.
+
+### Step 3: Configure Code Signing
+
+<Steps>
+  <Step title="Select the Project">
+    Click on the blue project icon in the Xcode navigator
+  </Step>
+  <Step title="Choose Target">
+    Select the "ReforestationSaga" target under Targets
+  </Step>
+  <Step title="Set Team">
+    Under "Signing & Capabilities" tab, select your Apple ID team from the dropdown
+  </Step>
+  <Step title="Update Bundle Identifier">
+    If needed, change the bundle identifier to a unique value (e.g., `com.yourname.reforestationsaga`)
+  </Step>
+</Steps>
+
+<Warning>
+  You must select a development team and configure code signing to run on a physical iOS device. Xcode will display errors until this is configured.
+</Warning>
+
+### Step 4: Configure Camera Permissions
+
+The project requires camera access. Verify that `Info.plist` contains:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Reforestation Saga uses your camera to detect eye blinks for gameplay control.</string>
+```
+
+<Info>
+  This permission description is shown to users when the app first requests camera access. The game cannot function without camera permissions.
+</Info>
+
+### Step 5: Connect Your iOS Device
+
+1. Connect your iPhone or iPad to your Mac via USB cable
+2. Unlock your device and trust the computer if prompted
+3. In Xcode, select your device from the device dropdown menu (top toolbar)
+
+### Step 6: Build and Run
+
+Click the **Play** button in Xcode or press **⌘ + R** to build and run.
+
+<Steps>
+  <Step title="First Build">
+    Xcode compiles the Swift code, which may take 1-2 minutes on first build
+  </Step>
+  <Step title="Trust Developer">
+    On your iOS device, go to **Settings > General > VPN & Device Management** and trust your developer certificate
+  </Step>
+  <Step title="Grant Camera Permission">
+    When the app launches, tap "Allow" when prompted for camera access
+  </Step>
+  <Step title="Start Playing">
+    Follow the on-screen story and tap to begin your reforestation mission
+  </Step>
+</Steps>
+
+## Dependencies
+
+Reforestation Saga uses native iOS frameworks with no external package dependencies:
+
+### SwiftUI
+
+The app structure uses SwiftUI for declarative UI:
+
+```swift
+@main
+struct ReforestationSaga_App: App {
+    @StateObject private var detector = EyeBlinkDetectorVision()
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(detector)
+        }
+    }
+}
+```
+
+### AVFoundation
+
+Handles camera capture with `AVCaptureSession`:
+
+```swift
+private let session = AVCaptureSession()
+```
+
+The session is configured to use the front camera by default for face detection.
+
+### Vision Framework
+
+Detects facial landmarks for eye blink detection:
+
+```swift
+let request = VNDetectFaceLandmarksRequest { [weak self] request, error in
+    guard let results = request.results as? [VNFaceObservation] else { return }
+    // Process eye landmarks and calculate Eye Aspect Ratio
+}
+```
+
+### SpriteKit
+
+Renders the rotating planet and game elements:
+
+```swift
+SpriteView(
+    scene: scene ?? GameScene(size: UIScreen.main.bounds.size),
+    options: [.allowsTransparency]
+)
+```
+
+<Info>
+  All frameworks are included in the iOS SDK - no manual installation required.
+</Info>
+
+## Troubleshooting
+
+### Camera Not Working
+
+**Problem**: Eye detection not functioning or camera view is black.
+
+**Solutions**:
+- Verify camera permissions are granted in iOS Settings
+- Check that no other app is using the camera
+- Restart the app to reinitialize the AVCaptureSession
+- Try switching cameras using the rotation button
+
+### Build Errors
+
+**Problem**: Xcode shows code signing or provisioning errors.
+
+**Solutions**:
+- Ensure your Apple ID is added in Xcode Preferences > Accounts
+- Select your team in project Signing & Capabilities
+- Change the bundle identifier if there are conflicts
+- Clean build folder with **⌘ + Shift + K** and rebuild
+
+### Blink Detection Not Responsive
+
+**Problem**: Blinks are not being detected or counter not increasing.
+
+**Solutions**:
+- Ensure you're in a well-lit environment
+- Position your face directly facing the camera
+- Look for golden eye outlines indicating successful face detection
+- Perform complete, deliberate blinks rather than partial eye closures
+
+### Performance Issues
+
+**Problem**: Game is laggy or dropping frames.
+
+**Solutions**:
+- Close other running apps to free system resources
+- The game processes every 3rd camera frame to optimize performance
+- Ensure your device meets minimum requirements (iOS 14.0+)
+- Older devices may experience reduced performance
+
+<Warning>
+  Eye blink detection calculates EAR using the formula `(vertical1 + vertical2) / (2.0 * horizontal)` and requires clear visibility of both eyes with at least 6 landmark points each.
+</Warning>
+
+## Running in Debug Mode
+
+For development and testing, a tap gesture is enabled in DEBUG builds:
+
+```swift
+#if DEBUG
+.onTapGesture {
+    if showInitialBlinkAlert {
+        showInitialBlinkAlert = false
+        hasPlantedFirstTree = true
+        if (treesRemaining > 0) {
+            scene?.shootNeedle()
+        }
+    } else {
+        if (treesRemaining > 0) {
+            scene?.shootNeedle()
+        }
+    }
+}
+#endif
+```
+
+This allows testing gameplay mechanics by tapping instead of blinking when running from Xcode.
+
+<Note>
+  The tap gesture is automatically removed in Release builds to ensure the game only responds to eye blinks.
+</Note>
+
+## Next Steps
+
+Once you've successfully built and installed the game:
+
+<CardGroup cols={2}>
+  <Card
+    title="Learn the Controls"
+    icon="gamepad"
+    href="/how-to-play"
+  >
+    Master eye blink detection and gameplay mechanics
+  </Card>
+  <Card
+    title="Understanding the Story"
+    icon="book-open"
+    href="/introduction"
+  >
+    Dive into the Intergalactic Reforestation Unit mission
+  </Card>
+</CardGroup>

@@ -1,0 +1,615 @@
+---
+title: SpriteKit Game Engine Implementation
+description: Deep dive into the SpriteKit-based game engine, including physics, collision detection, and scene management
+---
+
+## Overview
+
+Reforestation Saga's game engine is built on SpriteKit, Apple's 2D game framework. The core gameplay involves shooting tree sprites onto a rotating Earth sprite, with collision detection for forbidden zones and existing trees.
+
+## GameScene Architecture
+
+### Core Components
+
+```swift GameScene.swift
+class GameScene: SKScene {
+    let circle = SKSpriteNode(imageNamed: "buminew")
+    let needleContainer = SKNode()
+    var onFailZoneHit: (() -> Void)?
+    var onTreeZoneHit: (() -> Void)?
+    var onTreeHit: (() -> Void)?
+    var isFail: Bool = false
+    private var treeIndicator: SKSpriteNode?
+    private var treesShot = 0
+    private var treesTarget = 3
+}
+```
+
+<Note>
+  Callbacks (`onFailZoneHit`, `onTreeZoneHit`, `onTreeHit`) enable communication from SpriteKit to SwiftUI without tight coupling.
+</Note>
+
+### Scene Initialization
+
+```swift GameScene.swift
+override func didMove(to view: SKView) {
+    self.backgroundColor = .clear
+    view.allowsTransparency = true
+    
+    circle.size = CGSize(width: 590, height: 590)
+    circle.position = CGPoint(x: size.width / 2, y: size.height / 2.8)
+    addChild(circle)
+    
+    circle.addChild(needleContainer)
+    
+    setForbiddenArea()
+    setupTreeIndicator()
+}
+```
+
+<Info>
+  Transparency is enabled to allow camera view to show through the SpriteKit scene.
+</Info>
+
+## Level Configuration
+
+### Dynamic Difficulty System
+
+Each level adjusts rotation speed, direction, and tree count:
+
+```swift GameScene.swift
+func configureLevel(
+    treesNeeded: Int,
+    rotationDuration: Double,
+    rotateLeft: Bool
+) {
+    treesShot = 0
+    treesTarget = treesNeeded
+    resetNeedles()
+    setupTreeIndicator()
+    treeIndicator?.isHidden = false
+    
+    circle.removeAllActions()
+    
+    let angle: CGFloat = rotateLeft ? -.pi : .pi
+    let rotate = SKAction.rotate(byAngle: angle, duration: rotationDuration)
+    let forever = SKAction.repeatForever(rotate)
+    circle.run(forever)
+}
+```
+
+### Rotation Mechanics
+
+<Tabs>
+  <Tab title="Clockwise">
+    ```swift
+    let angle: CGFloat = .pi
+    let rotate = SKAction.rotate(byAngle: angle, duration: rotationDuration)
+    ```
+    
+    Positive angle rotates clockwise (180° per duration).
+  </Tab>
+  
+  <Tab title="Counter-clockwise">
+    ```swift
+    let angle: CGFloat = -.pi
+    let rotate = SKAction.rotate(byAngle: angle, duration: rotationDuration)
+    ```
+    
+    Negative angle rotates counter-clockwise.
+  </Tab>
+  
+  <Tab title="Infinite Loop">
+    ```swift
+    let forever = SKAction.repeatForever(rotate)
+    circle.run(forever)
+    ```
+    
+    Action repeats until manually stopped.
+  </Tab>
+</Tabs>
+
+### Tree Target Calculation
+
+The `remainingTrees` computed property tracks progress:
+
+```swift GameScene.swift
+var remainingTrees: Int {
+    return max(treesTarget - treesShot, 0)
+}
+```
+
+## Forbidden Zone System
+
+### Zone Definition
+
+Forbidden zones are defined as arc-shaped `SKShapeNode` regions:
+
+```swift GameScene.swift
+private func arcPath(
+    radius: CGFloat, startAngle: CGFloat, endAngle: CGFloat
+) -> UIBezierPath {
+    let arcPath = UIBezierPath()
+    arcPath.move(to: .zero)
+    arcPath.addArc(
+        withCenter: .zero, radius: radius, startAngle: startAngle,
+        endAngle: endAngle, clockwise: true)
+    arcPath.close()
+    
+    return arcPath
+}
+```
+
+### Zone Placement
+
+Four zones represent oceans and continents:
+
+```swift GameScene.swift
+func setForbiddenArea() {
+    // Zone 1: Large ocean region
+    var failZone = SKShapeNode(
+        path: arcPath(radius: 300, startAngle: 6, endAngle: 6.97).cgPath)
+    failZone.strokeColor = .clear
+    failZone.position = CGPoint(x: 0, y: 0)
+    failZone.name = "failZone-1"
+    circle.addChild(failZone)
+    
+    // Zone 2: Secondary ocean
+    failZone = SKShapeNode(
+        path: arcPath(radius: 300, startAngle: 3.96, endAngle: 5.30).cgPath)
+    failZone.strokeColor = .clear
+    failZone.name = "failZone-2"
+    circle.addChild(failZone)
+    
+    // Zone 3: Rotated continent
+    failZone = SKShapeNode(
+        path: arcPath(radius: 300, startAngle: 4.73, endAngle: 4.88).cgPath)
+    failZone.strokeColor = .clear
+    failZone.zRotation = 45
+    failZone.name = "failZone-3"
+    circle.addChild(failZone)
+    
+    // Zone 4: Small ocean
+    failZone = SKShapeNode(
+        path: arcPath(radius: 300, startAngle: 1.62, endAngle: 1.76).cgPath)
+    failZone.strokeColor = .clear
+    failZone.zRotation = 1
+    failZone.name = "failZone-4"
+    circle.addChild(failZone)
+}
+```
+
+<Warning>
+  Zones are children of `circle`, so they rotate with the planet. Angles are in radians.
+</Warning>
+
+## Tree Shooting Mechanism
+
+### Shoot Trigger
+
+```swift GameScene.swift
+func shootNeedle() {
+    guard remainingTrees > 0 else { return }
+    guard isFail == false else { return }
+    GameMusicManager.shared.playSoundEffect(filename: "TreeSFX")
+    
+    let needle = SKSpriteNode(imageNamed: "pohonnew")
+    treeIndicator?.isHidden = true
+    let needleLength: CGFloat = 70
+    
+    needle.size = CGSize(width: 30, height: needleLength)
+    
+    // Start position (above circle)
+    let startY = circle.position.y + 300
+    needle.position = CGPoint(x: circle.position.x, y: startY)
+    needle.zRotation = 0
+    addChild(needle)
+    
+    // Target position (circle perimeter)
+    let circleRadius: CGFloat = 118
+    let targetPoint = CGPoint(
+        x: circle.position.x,
+        y: circle.position.y + circleRadius + needleLength / 2
+    )
+    
+    let move = SKAction.move(to: targetPoint, duration: 0.18)
+    let sequence = SKAction.sequence([move, stickToCircle])
+    needle.run(sequence)
+}
+```
+
+### Animation Pipeline
+
+<Steps>
+  <Step title="Create Sprite">
+    `SKSpriteNode` initialized with tree texture ("pohonnew")
+  </Step>
+  
+  <Step title="Position Above">
+    Placed 300 points above circle center, matching indicator position
+  </Step>
+  
+  <Step title="Animate Movement">
+    `SKAction.move` animates to circle perimeter in 0.18 seconds
+  </Step>
+  
+  <Step title="Collision Check">
+    Custom `stickToCircle` action detects zone intersections
+  </Step>
+  
+  <Step title="Attach or Destroy">
+    If valid, attach to `needleContainer`; otherwise, trigger failure
+  </Step>
+</Steps>
+
+## Collision Detection
+
+### Stick to Circle Logic
+
+```swift GameScene.swift
+let stickToCircle = SKAction.run {
+    needle.removeAllActions()
+    
+    // Convert to circle's coordinate space
+    let relativePosition = self.convert(
+        needle.position,
+        to: self.needleContainer
+    )
+    
+    // Check forbidden zones
+    let failZoneNames = [
+        "failZone-1", "failZone-2", "failZone-3", "failZone-4",
+    ]
+    
+    for zoneName in failZoneNames {
+        if let failZone = self.circle.childNode(withName: zoneName),
+           failZone.contains(relativePosition) {
+            let splash = SKSpriteNode(imageNamed: "splash")
+            splash.position = CGPoint(
+                x: needle.position.x,
+                y: needle.position.y - 15
+            )
+            splash.setScale(0.11)
+            self.addChild(splash)
+            
+            needle.removeAllChildren()
+            AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+            self.isFail = true
+            self.onFailZoneHit?()
+            return
+        }
+    }
+    
+    // Check tree collisions...
+}
+```
+
+### Coordinate Space Conversion
+
+<Info>
+  `convert(_:to:)` transforms needle position from scene coordinates to `needleContainer` coordinates, accounting for circle rotation.
+</Info>
+
+### Tree Collision Detection
+
+Distance-based collision between new tree and existing trees:
+
+```swift GameScene.swift
+for child in self.needleContainer.children {
+    if child.name == "treeZone" {
+        let distance = hypot(
+            child.position.x - relativePosition.x,
+            child.position.y - relativePosition.y
+        )
+        let minAllowedDistance: CGFloat = 30
+        if distance < minAllowedDistance {
+            AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+            let crash = SKSpriteNode(imageNamed: "crash")
+            crash.position = CGPoint(
+                x: needle.position.x + 10,
+                y: needle.position.y + 15
+            )
+            crash.setScale(0.12)
+            self.addChild(crash)
+            self.onTreeZoneHit?()
+            return
+        }
+    }
+}
+```
+
+<Note>
+  Euclidean distance formula `hypot(dx, dy)` computes distance between tree positions. Minimum separation is 30 points.
+</Note>
+
+## Successful Tree Placement
+
+### Attach to Container
+
+```swift GameScene.swift
+needle.removeFromParent()
+needle.position = relativePosition
+
+// Correct rotation to stay upright
+needle.zRotation = -self.circle.zRotation
+needle.name = "treeZone"
+
+self.needleContainer.addChild(needle)
+
+self.treesShot += 1
+self.onTreeHit?()
+```
+
+### Rotation Correction
+
+<Tabs>
+  <Tab title="Problem">
+    `needleContainer` rotates with `circle`, causing trees to rotate.
+  </Tab>
+  
+  <Tab title="Solution">
+    ```swift
+    needle.zRotation = -self.circle.zRotation
+    ```
+    
+    Counter-rotate tree sprite to cancel circle rotation.
+  </Tab>
+  
+  <Tab title="Result">
+    Trees remain visually upright despite container rotation.
+  </Tab>
+</Tabs>
+
+## Tree Indicator System
+
+### Indicator Setup
+
+```swift GameScene.swift
+private func setupTreeIndicator() {
+    treeIndicator?.removeFromParent()
+    
+    treeIndicator = SKSpriteNode(imageNamed: "pohonnew")
+    guard let indicator = treeIndicator else { return }
+    
+    indicator.size = CGSize(width: 30, height: 70)
+    
+    let startY = circle.position.y + 300
+    indicator.position = CGPoint(x: circle.position.x, y: startY)
+    indicator.zRotation = 0
+    indicator.alpha = 0.7
+    indicator.name = "treeIndicator"
+    
+    addChild(indicator)
+    
+    let floatUp = SKAction.moveBy(x: 0, y: 10, duration: 1.0)
+    let floatDown = SKAction.moveBy(x: 0, y: -10, duration: 1.0)
+    let floatSequence = SKAction.sequence([floatUp, floatDown])
+    let floatForever = SKAction.repeatForever(floatSequence)
+    
+    indicator.run(floatForever)
+}
+```
+
+### Floating Animation
+
+The indicator oscillates vertically to draw attention:
+
+```swift
+floatUp: y += 10 (1.0s)
+floatDown: y -= 10 (1.0s)
+Repeat forever
+```
+
+### Reappearance Animation
+
+After each tree is planted, the indicator fades in:
+
+```swift GameScene.swift
+DispatchQueue.main.asyncAfter(deadline: .now()) {
+    guard let indicator = self.treeIndicator else { return }
+    
+    let normalY = self.circle.position.y + 300
+    let startY = normalY + 30  // Start 30 points higher
+    
+    indicator.position = CGPoint(x: self.circle.position.x, y: startY)
+    indicator.alpha = 0  // Start transparent
+    indicator.isHidden = false
+    
+    let moveDown = SKAction.moveTo(y: normalY, duration: 0.1)
+    let fadeIn = SKAction.fadeAlpha(to: 0.7, duration: 0.1)
+    let appearGroup = SKAction.group([moveDown, fadeIn])
+    
+    let setupFloating = SKAction.run {
+        let floatUp = SKAction.moveBy(x: 0, y: 10, duration: 1.0)
+        let floatDown = SKAction.moveBy(x: 0, y: -10, duration: 1.0)
+        let floatSequence = SKAction.sequence([floatUp, floatDown])
+        let floatForever = SKAction.repeatForever(floatSequence)
+        indicator.run(floatForever, withKey: "floating")
+    }
+    
+    let sequence = SKAction.sequence([appearGroup, setupFloating])
+    indicator.run(sequence)
+}
+```
+
+<Info>
+  The indicator uses grouped actions (move + fade) followed by repeating float animation for smooth transitions.
+</Info>
+
+## Audio Integration
+
+### Sound Effects
+
+```swift GameScene.swift
+GameMusicManager.shared.playSoundEffect(filename: "TreeSFX")
+```
+
+### Haptic Feedback
+
+```swift
+AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+```
+
+<Note>
+  Haptic feedback triggers on collision failures, providing tactile confirmation of mistakes.
+</Note>
+
+## Scene Reset
+
+### Needle Container Cleanup
+
+```swift GameScene.swift
+func resetNeedles() {
+    needleContainer.removeAllChildren()
+}
+```
+
+Called at the start of each level to clear previous trees.
+
+## SwiftUI Integration
+
+### SpriteView Wrapper
+
+```swift GameView.swift
+SpriteView(
+    scene: scene ?? GameScene(size: UIScreen.main.bounds.size),
+    options: [.allowsTransparency]
+)
+.id(sceneID)  // Force recreation when ID changes
+.ignoresSafeArea()
+```
+
+### Scene Lifecycle
+
+```swift GameView.swift
+func setupScene() {
+    if let oldScene = scene {
+        oldScene.removeAllActions()
+        oldScene.removeAllChildren()
+        oldScene.removeFromParent()
+    }
+    
+    let newScene = GameScene(size: UIScreen.main.bounds.size)
+    newScene.scaleMode = .resizeFill
+    newScene.onFailZoneHit = {
+        showMissionFailedPopup = true
+    }
+    newScene.onTreeZoneHit = {
+        reason = "pohon"
+        showMissionFailedPopup = true
+    }
+    newScene.onTreeHit = {
+        treesRemaining -= 1
+        if treesRemaining <= 0 {
+            showLevelClearPopup = true
+            // Level progression...
+        }
+    }
+    
+    newScene.configureLevel(
+        treesNeeded: treesNeeded,
+        rotationDuration: rotationDuration,
+        rotateLeft: rotateLeft
+    )
+    
+    self.scene = newScene
+    self.sceneID = UUID()  // Trigger SpriteView refresh
+    resumeGame()
+}
+```
+
+<Warning>
+  Always clean up old scene resources before creating new scene to prevent memory leaks.
+</Warning>
+
+## Pause/Resume System
+
+```swift GameView.swift
+func pauseGame() {
+    scene?.isPaused = true
+}
+
+func resumeGame() {
+    scene?.isPaused = false
+}
+```
+
+Used during popup displays:
+
+```swift
+.onChange(of: showMissionFailedPopup) { newValue in
+    if newValue {
+        pauseGame()
+        GameMusicManager.shared.pauseMusic()
+    } else {
+        resumeGame()
+        GameMusicManager.shared.resumeMusic()
+    }
+}
+```
+
+## Debug Features
+
+### Tap to Shoot (Debug Only)
+
+```swift GameView.swift
+#if DEBUG
+.onTapGesture {
+    if showInitialBlinkAlert {
+        showInitialBlinkAlert = false
+        hasPlantedFirstTree = true
+        if (treesRemaining > 0) {
+            scene?.shootNeedle()
+        }
+    } else {
+        if (treesRemaining > 0) {
+            scene?.shootNeedle()
+        }
+    }
+}
+#endif
+```
+
+<Info>
+  Debug tap gesture allows testing without camera/blink detection during development.
+</Info>
+
+## Performance Optimization
+
+### Minimal Physics
+
+The game uses manual collision detection instead of SpriteKit physics bodies:
+
+- No `SKPhysicsBody` overhead
+- Custom distance calculations for tree spacing
+- Shape containment checks for forbidden zones
+
+### Action Cleanup
+
+```swift
+oldScene.removeAllActions()
+oldScene.removeAllChildren()
+oldScene.removeFromParent()
+```
+
+Prevents action accumulation across level transitions.
+
+### Lazy Rendering
+
+```swift
+self.backgroundColor = .clear
+view.allowsTransparency = true
+```
+
+Transparency allows camera view to render behind, reducing overdraw.
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Technical Overview" icon="diagram-project" href="/technical/overview">
+    Complete architecture documentation
+  </Card>
+  <Card title="Eye Detection" icon="eye" href="/technical/eye-detection">
+    Vision framework integration
+  </Card>
+</CardGroup>

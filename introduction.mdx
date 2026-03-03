@@ -1,0 +1,97 @@
+---
+title: Welcome to Reforestation Saga
+description: An immersive iOS game where you plant trees across planets using eye blink detection technology
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="Hero Dark"
+/>
+
+## Mission Overview
+
+Welcome aboard, Cadet! You've arrived at the **Intergalactic Reforestation Unit**, stationed on the edge of the exosphere. Your mission: help planets in crisis - overheating, choking on carbon, and running out of time.
+
+Reforestation Saga is an innovative iOS game that combines environmental storytelling with cutting-edge eye blink detection technology powered by Apple's Vision framework. Control gameplay entirely through your eye blinks as you plant trees across dying planets.
+
+<Note>
+  This game requires camera permissions to detect eye blinks. Your camera feed is processed locally on your device and never transmitted or stored.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card
+    title="Eye Blink Controls"
+    icon="eye"
+    href="/how-to-play#blink-detection"
+  >
+    Plant trees by simply blinking your eyes - no touch controls required
+  </Card>
+  <Card
+    title="Progressive Difficulty"
+    icon="layer-group"
+    href="/how-to-play#level-progression"
+  >
+    Face increasing challenges with faster planet rotation and more trees to plant
+  </Card>
+  <Card
+    title="Environmental Mission"
+    icon="seedling"
+    href="/how-to-play#gameplay-mechanics"
+  >
+    Reforest planets by hitting precise tree zones while avoiding water zones
+  </Card>
+  <Card
+    title="Swift & SwiftUI"
+    icon="code"
+    href="/installation"
+  >
+    Built with modern iOS technologies including SpriteKit and Vision framework
+  </Card>
+</CardGroup>
+
+## Get Started
+
+<Steps>
+  <Step title="Build the Game">
+    Follow the [installation guide](/installation) to set up and run Reforestation Saga on your iOS device
+  </Step>
+  <Step title="Learn the Controls">
+    Review [how to play](/how-to-play) to master eye blink controls and game mechanics
+  </Step>
+  <Step title="Start Your Mission">
+    Launch the game, calibrate your camera, and begin reforesting planets across the galaxy
+  </Step>
+</Steps>
+
+## System Requirements
+
+- iOS device with TrueDepth camera (iPhone X or later recommended)
+- iOS 14.0 or later
+- Xcode 13.0 or later for development
+- Camera permissions enabled
+
+<Warning>
+  This game uses real-time face tracking and eye detection. Ensure you're in a well-lit environment and position your face clearly within the camera frame for optimal performance.
+</Warning>
+
+## About the Technology
+
+Reforestation Saga leverages Apple's Vision framework to detect facial landmarks and calculate Eye Aspect Ratio (EAR) in real-time. When both eyes close below a threshold of 0.1, the game registers a blink and shoots a needle to plant trees on the rotating planet.
+
+The game combines:
+- **AVFoundation** for camera capture
+- **Vision framework** for face landmark detection
+- **SpriteKit** for 2D game rendering
+- **SwiftUI** for the user interface
+
+<Info>
+  Eye blink detection processes every 3rd frame to optimize performance while maintaining responsive controls.
+</Info>

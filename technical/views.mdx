@@ -1,0 +1,335 @@
+---
+title: "SwiftUI Views"
+description: "SwiftUI view components for navigation, gameplay, and user interactions"
+---
+
+## HomeView
+
+The main menu view that displays the game title, highest level achieved, and initiates the player journey.
+
+<ParamField path="@State scene" type="GameScene?">
+  Reference to the game scene (optional)
+</ParamField>
+
+<ParamField path="@State isMuted" type="Bool">
+  Controls whether game music is muted (default: false)
+</ParamField>
+
+<ParamField path="@State navigateToGame" type="Bool">
+  Triggers navigation to the game view
+</ParamField>
+
+<ParamField path="@State QuestView" type="Bool">
+  Shows/hides the quest dialog with mission briefing
+</ParamField>
+
+<ParamField path="@EnvironmentObject gameData" type="GameData">
+  Shared game state including highest level achieved
+</ParamField>
+
+### Key Features
+
+<Accordion title="Quest Dialog System">
+  The HomeView implements a two-state interface:
+  - **Initial State**: Shows "Tap to Play" prompt over the rotating planet
+  - **Quest State**: Displays mission briefing from the Intergalactic Reforestation Unit
+  
+  Transition is triggered via tap gesture with smooth easeInOut animation (0.5s duration)
+</Accordion>
+
+<Accordion title="Music Integration">
+  Background music is managed through the GameMusicManager singleton:
+  
+  ```swift
+  Button {
+      isMuted.toggle()
+      if isMuted {
+          GameMusicManager.shared.pauseMusic()
+      } else {
+          GameMusicManager.shared.resumeMusic()
+      }
+  } label: {
+      Image(isMuted ? "soundoff" : "sound")
+          .resizable()
+          .scaledToFit()
+          .frame(width: 35, height: 35)
+  }
+  ```
+  
+  On appear, plays "IntroSpace" music track automatically.
+</Accordion>
+
+### Layout Structure
+
+```swift
+var body: some View {
+    NavigationStack {
+        ZStack(alignment: .top) {
+            // Background image
+            Image("background")
+                .ignoresSafeArea()
+            
+            // Highest level display
+            HStack {
+                ZStack {
+                    Image("box")
+                        .resizable()
+                        .frame(width: 140, height: 40)
+                    Text("Highest Level: \(gameData.highestLevel)")
+                        .font(Font.custom("Gugi", size: 14))
+                }
+            }
+            .padding(.top, 58)
+        }
+    }
+}
+```
+
+<Note>
+  The view uses custom fonts "Gugi" for headings and "Genos" for body text, with a consistent color theme of `Color(red: 0.94, green: 0.84, blue: 0.65)` (gold/cream tone).
+</Note>
+
+---
+
+## GameView
+
+The main gameplay view combining camera vision detection, SpriteKit scene rendering, and game state management.
+
+<ParamField path="@EnvironmentObject detector" type="EyeBlinkDetectorVision">
+  Eye blink detection system that triggers tree planting
+</ParamField>
+
+<ParamField path="@State scene" type="GameScene?">
+  The active SpriteKit game scene
+</ParamField>
+
+<ParamField path="@State currentLevel" type="Int">
+  Current game level (default: 1)
+</ParamField>
+
+<ParamField path="@State treesRemaining" type="Int">
+  Trees needed to complete the current level
+</ParamField>
+
+<ParamField path="@State showMissionFailedPopup" type="Bool">
+  Displays failure popup when hitting forbidden zones
+</ParamField>
+
+<ParamField path="@State showLevelClearPopup" type="Bool">
+  Displays success popup when level is completed
+</ParamField>
+
+### Level Configuration
+
+<Accordion title="Dynamic Difficulty System">
+  The game adjusts rotation speed and direction based on level:
+  
+  ```swift
+  switch currentLevel {
+  case 1...5:
+      rotationDuration = 4
+      rotateLeft = false
+  case 6...10:
+      rotationDuration = 3
+      rotateLeft = Bool.random()
+  default:
+      rotationDuration = Double.random(in: 1.5...4)
+      rotateLeft = Bool.random()
+  }
+  ```
+  
+  Trees required per level increases progressively:
+  ```swift
+  func treesForLevel(_ level: Int) -> Int {
+      let base = 3
+      let cycle = (level - 1) / 5
+      let positionInCycle = (level - 1) % 5
+      return base + cycle + positionInCycle
+  }
+  ```
+</Accordion>
+
+### Scene Setup
+
+```swift
+func setupScene() {
+    reason = "laut"
+    let newTrees = treesForLevel(currentLevel)
+    self.treesNeeded = newTrees
+    let newScene = GameScene(size: UIScreen.main.bounds.size)
+    newScene.scaleMode = .resizeFill
+    
+    newScene.onFailZoneHit = {
+        showMissionFailedPopup = true
+    }
+    
+    newScene.onTreeZoneHit = {
+        reason = "pohon"
+        showMissionFailedPopup = true
+    }
+    
+    newScene.onTreeHit = {
+        treesRemaining -= 1
+        if treesRemaining <= 0 {
+            showLevelClearPopup = true
+        }
+    }
+}
+```
+
+<Accordion title="Blink Detection Integration">
+  Eye blinks trigger tree deployment:
+  
+  ```swift
+  .onChange(of: detector.blinkCount) {
+      if showInitialBlinkAlert {
+          showInitialBlinkAlert = false
+          hasPlantedFirstTree = true
+          if (treesRemaining > 0) {
+              scene?.shootNeedle()
+          }
+      } else if !showMissionFailedPopup && !showLevelClearPopup {
+          scene?.shootNeedle()
+      }
+  }
+  ```
+  
+  First blink dismisses tutorial alert and plants first tree.
+</Accordion>
+
+<Note>
+  The view disables idle timer during gameplay with `UIApplication.shared.isIdleTimerDisabled = true` to prevent screen dimming during active play.
+</Note>
+
+### State Persistence
+
+```swift
+extension UserDefaults {
+    private enum Keys {
+        static let highestLevel = "highestLevel"
+    }
+    
+    var savedHighestLevel: Int {
+        get { integer(forKey: Keys.highestLevel) }
+        set { set(newValue, forKey: Keys.highestLevel) }
+    }
+}
+```
+
+---
+
+## CameraCheckView
+
+Face verification view that validates player identity through eye blink detection before game entry.
+
+<ParamField path="@EnvironmentObject detector" type="EyeBlinkDetectorVision">
+  Eye blink detector for identity verification
+</ParamField>
+
+<ParamField path="@State showAlert" type="Bool">
+  Shows "Access Granted" popup on successful blink detection
+</ParamField>
+
+<ParamField path="@State navigateToNextPage" type="Bool">
+  Triggers navigation to MailView after verification
+</ParamField>
+
+### Implementation
+
+```swift
+var body: some View {
+    ZStack(alignment: .bottom) {
+        CameraViewVision(eyeBlinkDetector: detector)
+            .edgesIgnoringSafeArea(.all)
+        Image("camera-bg")
+            .resizable()
+            .ignoresSafeArea()
+        if showAlert {
+            AccessGrantedPopUp()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.scale)
+                .zIndex(1)
+        }
+    }
+    .onChange(of: detector.blinkCount) {
+        if detector.blinkCount > 0 {
+            showAlert = true
+            GameMusicManager.shared.playSoundEffect(filename: "access-granted")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            navigateToNextPage = true
+        }
+    }
+}
+```
+
+<Note>
+  This view provides narrative context - the player must "verify identity" by blinking at the camera scanner before proceeding to the mission briefing.
+</Note>
+
+---
+
+## IntroView
+
+Mission briefing view displaying an animated planet with rotating introduction scene and mission start button.
+
+<ParamField path="@State scene" type="IntroScene?">
+  SpriteKit scene showing mission details and animated elements
+</ParamField>
+
+<ParamField path="@State navToGame" type="Bool">
+  Triggers navigation to GameView when mission starts
+</ParamField>
+
+<ParamField path="@State glowOpacity" type="Double">
+  Opacity value for pulsing glow animation on start button (default: 0.7)
+</ParamField>
+
+<ParamField path="@EnvironmentObject gameData" type="GameData">
+  Shared game state
+</ParamField>
+
+### Scene Configuration
+
+```swift
+private func setupScene() {
+    let newScene = IntroScene()
+    newScene.scaleMode = .resizeFill
+    newScene.onStartMission = {
+        navToGame = true
+    }
+    self.scene = newScene
+}
+```
+
+### Glow Animation
+
+<Accordion title="Button Animation">
+  The start mission button features a pulsing glow effect:
+  
+  ```swift
+  private func startGlowAnimation() {
+      withAnimation(
+          Animation.easeInOut(duration: 1.0)
+              .repeatForever(autoreverses: true)
+      ) {
+          glowOpacity = glowOpacity == 0.7 ? 1.0 : 0.7
+      }
+  }
+  ```
+  
+  Applied as shadow with gold color:
+  ```swift
+  .shadow(
+      color: Color(red: 0.94, green: 0.84, blue: 0.65)
+          .opacity(glowOpacity),
+      radius: 20,
+      x: 0,
+      y: 0
+  )
+  ```
+</Accordion>
+
+<Note>
+  IntroView uses decorative separator images and a custom border frame to create a futuristic interface aesthetic matching the space reforestation theme.
+</Note>

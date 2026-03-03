@@ -1,0 +1,115 @@
+---
+title: Eye Blink Control
+description: Control gameplay in Reforestation Saga using natural eye blinks detected through your device's camera
+---
+
+Reforestation Saga uses advanced eye blink detection to create an intuitive, hands-free gaming experience. Every blink you make plants a tree in the game world.
+
+## How It Works
+
+The game uses your device's camera to track your eyes in real-time. When you blink, a tree is instantly planted on the rotating planet.
+
+<Steps>
+  <Step title="Camera Access">
+    When you start playing, the game requests access to your device's camera. This is required for eye tracking to work.
+  </Step>
+  
+  <Step title="Face Detection">
+    The game automatically detects your face and tracks both eyes simultaneously using Vision framework technology.
+  </Step>
+  
+  <Step title="Blink Recognition">
+    When both eyes close and reopen, the game registers a blink and triggers the tree planting action.
+  </Step>
+</Steps>
+
+## Visual Feedback
+
+<Info>
+Your eyes are outlined in gold while the camera is tracking them, so you always know the system is working.
+</Info>
+
+### Blink Counter
+
+A blink counter appears in the top-left corner of your screen showing your total blinks during the session:
+
+```swift
+blinkLabel.text = "Blink: \(self.blinkCount)"
+```
+
+### Tree Indicator
+
+A floating tree indicator above the planet shows where your next tree will be planted. This helps you time your blinks perfectly.
+
+## Camera Controls
+
+### Switching Cameras
+
+You can switch between front and back cameras using the camera rotation button in the bottom-right corner. This flexibility lets you find the best angle for accurate detection.
+
+<Tip>
+The front camera usually provides the most reliable eye tracking since it faces toward you.
+</Tip>
+
+## Detection Sensitivity
+
+The game uses Eye Aspect Ratio (EAR) calculations to determine when your eyes are closed:
+
+```swift
+if leftEAR < 0.1 && rightEAR < 0.1 {
+    if !self.isEyeClosed {
+        self.isEyeClosed = true
+    }
+}
+```
+
+Both eyes must have an aspect ratio below 0.1 for a blink to register. This threshold ensures natural blinks are detected while preventing false triggers.
+
+## Performance Optimization
+
+<Accordion title="Frame Processing">
+The game processes every 3rd frame instead of every frame to optimize performance while maintaining responsive blink detection:
+
+```swift
+frameCount += 1
+guard frameCount % 3 == 0 else { return }
+```
+
+This approach balances detection accuracy with battery life and device temperature.
+</Accordion>
+
+## First Blink Tutorial
+
+<Note>
+When you first enter a game level, a blink alert appears on screen. Simply blink once to dismiss it and start planting trees.
+</Note>
+
+This initial prompt ensures you're ready and the eye tracking system has locked onto your face before gameplay begins.
+
+## Tips for Best Results
+
+<Steps>
+  <Step title="Good Lighting">
+    Play in a well-lit environment. The camera needs to clearly see your eyes for accurate tracking.
+  </Step>
+  
+  <Step title="Hold Steady">
+    Keep your device at a comfortable distance where your entire face is visible in the camera view.
+  </Step>
+  
+  <Step title="Natural Blinks">
+    Use your normal blinking motion. Exaggerated blinks aren't necessary—the system detects natural eye closures.
+  </Step>
+  
+  <Step title="Camera Angle">
+    Position the camera so it has a clear view of both your eyes without obstructions.
+  </Step>
+</Steps>
+
+<Warning>
+The game keeps your screen active during gameplay to maintain continuous eye tracking. This prevents the device from sleeping mid-game.
+</Warning>
+
+## Accessibility
+
+Eye blink control makes Reforestation Saga accessible to players who prefer or require hands-free gameplay. The system works naturally without requiring any special equipment beyond your device's built-in camera.

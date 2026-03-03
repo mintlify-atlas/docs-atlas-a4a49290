@@ -1,0 +1,239 @@
+---
+title: Scoring System
+description: Track your progress and compete against your personal best in Reforestation Saga
+---
+
+Reforestation Saga uses a level-based scoring system where your highest reached level serves as your score. The game tracks your progress and challenges you to continuously improve.
+
+## Level as Score
+
+Unlike traditional games with point systems, your score in Reforestation Saga is simply the highest level you've reached:
+
+<Info>
+Each successfully completed level increases your score by 1. There's no maximum—you can continue improving indefinitely.
+</Info>
+
+## Progress Bar
+
+A visual progress bar in the top-left corner shows how many trees you've planted versus how many are required:
+
+```swift
+BarView(
+    treesRemaining: treesRemaining,
+    totalPollution: treesNeeded
+)
+```
+
+<Steps>
+  <Step title="Trees Remaining">
+    The bar updates in real-time as you plant each tree, showing your progress toward level completion.
+  </Step>
+  
+  <Step title="Visual Feedback">
+    Each successful tree plant decreases the remaining count, giving immediate feedback on your advancement.
+  </Step>
+  
+  <Step title="Level Context">
+    The total required trees increases with each level, making the progress bar more challenging to fill.
+  </Step>
+</Steps>
+
+## High Score System
+
+### Automatic Saving
+
+Your highest level is automatically saved to your device:
+
+```swift
+if currentLevel - 1 > gameData.highestLevel {
+    gameData.highestLevel = currentLevel - 1
+    UserDefaults.standard.savedHighestLevel = gameData.highestLevel
+}
+```
+
+<Note>
+High scores are saved immediately when you surpass your previous record, ensuring no progress is lost even if the app closes unexpectedly.
+</Note>
+
+### Persistent Storage
+
+High scores persist across app sessions using UserDefaults:
+
+```swift
+var savedHighestLevel: Int {
+    get { integer(forKey: Keys.highestLevel) }
+    set { set(newValue, forKey: Keys.highestLevel) }
+}
+```
+
+Your achievement is preserved permanently unless you manually reset the app data.
+
+## New High Score Detection
+
+When you fail a level, the game checks if you've achieved a new high score:
+
+```swift
+MissionFailedPopUp(
+    currentLevel: $currentLevel,
+    reason: $reason,
+    isNewHighScore: currentLevel - 1 >= gameData.highestLevel,
+    onNextMission: { ... }
+)
+```
+
+<Accordion title="High Score Feedback">
+If you've reached a new personal best:
+- The mission failed popup displays special congratulations
+- Your new highest level is highlighted
+- The achievement is immediately saved
+
+This recognition motivates you to keep pushing further even after failure.
+</Accordion>
+
+## Level Tracking
+
+### Current Level Display
+
+The current level you're playing is always visible in the top-right corner:
+
+```swift
+LevelSoundView(
+    isMuted: $isMuted,
+    currentLevel: currentLevel,
+    scene: scene
+)
+```
+
+<Info>
+This helps you track in real-time whether you're approaching or surpassing your previous best.
+</Info>
+
+### Level Progression Logic
+
+Levels increment sequentially after each successful completion:
+
+```swift
+showLevelClearPopup = false
+currentLevel += 1
+setupScene()
+```
+
+There's no skipping levels—you must complete each one in order to progress.
+
+## Failure and Reset
+
+When you fail a level, the game resets to level 1:
+
+```swift
+onNextMission: {
+    currentLevel = 1
+    gameData.highestLevel = UserDefaults.standard.savedHighestLevel
+    showMissionFailedPopup = false
+    setupScene()
+}
+```
+
+<Warning>
+Even though you restart from level 1, your highest level record remains intact. The restart creates a fresh challenge to beat your previous score.
+</Warning>
+
+## Competitive Elements
+
+### Personal Best Challenge
+
+<Steps>
+  <Step title="Set Your Record">
+    Your first playthrough establishes your baseline high score.
+  </Step>
+  
+  <Step title="Compete With Yourself">
+    Each subsequent run challenges you to surpass your previous achievement.
+  </Step>
+  
+  <Step title="Infinite Improvement">
+    With no level cap, there's always room to improve and set new records.
+  </Step>
+</Steps>
+
+### Achievement Milestones
+
+Certain level thresholds represent significant achievements:
+
+<Accordion title="Milestone Levels">
+- **Level 5**: Complete the tutorial phase with consistent rotation
+- **Level 10**: Master variable rotation directions  
+- **Level 15**: Demonstrate expert timing with random rotation speeds
+- **Level 20+**: Enter elite territory with maximum difficulty
+
+Each milestone marks your progression from beginner to expert player.
+</Accordion>
+
+## Score Improvement Strategies
+
+<Tip>
+To maximize your high score, focus on consistency rather than speed. Careful blink timing prevents failures that reset your progress.
+</Tip>
+
+### Analyzing Failures
+
+The game provides specific failure feedback:
+
+```swift
+let soundEffectName: String = reason == "laut" ? "water" : "failed"
+```
+
+<Steps>
+  <Step title="Water Failure">
+    If you plant in water, a splash effect and specific sound help you recognize the mistake.
+  </Step>
+  
+  <Step title="Collision Failure">
+    If you hit an existing tree, a crash effect indicates the collision point.
+  </Step>
+  
+  <Step title="Learn Patterns">
+    Understanding why you failed helps you avoid the same mistake in future attempts.
+  </Step>
+</Steps>
+
+## No External Leaderboards
+
+<Note>
+Reforestation Saga focuses on personal achievement rather than global competition. Your high score is private and stored only on your device.
+</Note>
+
+This design encourages you to enjoy the meditative gameplay without pressure from external comparisons.
+
+## Tracking Progress Over Time
+
+Since high scores persist across sessions, you can:
+
+- Return to the game weeks later and see your previous best
+- Set goals for specific level targets (e.g., "reach level 15")
+- Track gradual improvement as you learn optimal timing strategies
+- Challenge friends informally by comparing highest levels
+
+## Audio Feedback
+
+Success and failure are reinforced through sound:
+
+```swift
+GameMusicManager.shared.playSoundEffect(filename: "success")
+```
+
+<Accordion title="Sound Effects">
+- **Tree Planted**: Satisfying confirmation sound when trees successfully attach
+- **Level Complete**: Celebration sound when finishing a level
+- **Water Splash**: Distinctive audio when planting in forbidden zones  
+- **Collision**: Impact sound when hitting existing trees
+
+These audio cues provide immediate feedback on your scoring performance without requiring you to look at UI elements.
+</Accordion>
+
+## Motivation System
+
+<Info>
+The combination of immediate feedback (progress bar), session goals (complete current level), and long-term achievement (high score) creates a compelling motivation loop that encourages continued play.
+</Info>
+
+Each element works together to make every blink meaningful and every level completion rewarding.

@@ -1,0 +1,197 @@
+---
+title: Progressive Levels
+description: Understand how difficulty increases as you advance through Reforestation Saga's infinite level system
+---
+
+Reforestation Saga features an infinite level progression system where each level becomes progressively more challenging. The game adapts rotation speed, direction, and tree requirements to keep you engaged.
+
+## Level Structure
+
+Every level requires you to plant a specific number of trees on a rotating planet while avoiding water zones and existing trees.
+
+### Trees Required Per Level
+
+The number of trees you must plant increases with each level:
+
+```swift
+func treesForLevel(_ level: Int) -> Int {
+    let base = 3
+    let cycle = (level - 1) / 5
+    let positionInCycle = (level - 1) % 5
+    return base + cycle + positionInCycle
+}
+```
+
+<Accordion title="Trees Required by Level">
+- **Level 1**: 3 trees
+- **Level 2**: 4 trees  
+- **Level 3**: 5 trees
+- **Level 4**: 6 trees
+- **Level 5**: 7 trees
+- **Level 6**: 4 trees (new cycle with increased difficulty)
+- **Level 7**: 5 trees
+- **And so on...**
+
+Each 5-level cycle adds one additional tree to the base requirement.
+</Accordion>
+
+## Rotation Difficulty
+
+The planet's rotation changes as you progress, making precise blink timing increasingly important.
+
+### Levels 1-5: Learning Phase
+
+<Info>
+The planet rotates at a steady 4-second speed in a consistent direction, giving you time to learn the mechanics.
+</Info>
+
+```swift
+case 1...5:
+    rotationDuration = 4
+    rotateLeft = false
+```
+
+### Levels 6-10: Intermediate Challenge
+
+Rotation speed increases and direction becomes unpredictable:
+
+```swift
+case 6...10:
+    rotationDuration = 3
+    rotateLeft = Bool.random()
+```
+
+<Note>
+The planet now spins in a random direction each level—left or right—requiring faster adaptation.
+</Note>
+
+### Level 11+: Expert Mode
+
+At level 11 and beyond, rotation becomes highly variable:
+
+```swift
+default:
+    rotationDuration = Double.random(in: 1.5...4)
+    rotateLeft = Bool.random()
+```
+
+<Warning>
+Rotation duration randomizes between 1.5 and 4 seconds, and direction changes unpredictably. You must react quickly to changing conditions.
+</Warning>
+
+## Forbidden Zones
+
+Each level features multiple water zones where trees cannot be planted:
+
+<Steps>
+  <Step title="Ocean Areas">
+    Four distinct water zones rotate with the planet. Planting a tree in water causes mission failure with a splash effect.
+  </Step>
+  
+  <Step title="Visual Clarity">
+    Water zones are clearly visible on the planet surface, making them easy to identify and avoid.
+  </Step>
+  
+  <Step title="Zone Detection">
+    The game continuously checks if your tree lands in any forbidden zone and triggers immediate failure if detected.
+  </Step>
+</Steps>
+
+## Collision Detection
+
+As you plant more trees, avoiding existing trees becomes increasingly difficult:
+
+```swift
+let minAllowedDistance: CGFloat = 30
+if distance < minAllowedDistance {
+    // Collision detected - mission failed
+}
+```
+
+<Tip>
+Trees must be planted at least 30 points apart. Later levels with more required trees demand precision timing and spatial awareness.
+</Tip>
+
+## Level Completion
+
+When you successfully plant all required trees, a level complete popup appears:
+
+<Steps>
+  <Step title="Achievement Display">
+    A celebration popup shows your completed level number.
+  </Step>
+  
+  <Step title="Auto-Advance">
+    After 1.2 seconds, the game automatically advances you to the next level.
+  </Step>
+  
+  <Step title="Difficulty Increase">
+    The new level immediately applies updated rotation speeds, directions, and tree requirements.
+  </Step>
+</Steps>
+
+```swift
+DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+    showLevelClearPopup = false
+    currentLevel += 1
+    setupScene()
+}
+```
+
+## Progress Tracking
+
+### Highest Level Saved
+
+Your highest reached level is automatically saved:
+
+```swift
+if currentLevel - 1 > gameData.highestLevel {
+    gameData.highestLevel = currentLevel - 1
+    UserDefaults.standard.savedHighestLevel = gameData.highestLevel
+}
+```
+
+<Info>
+Even if you fail a level, your highest level achievement is preserved and displayed on the home screen.
+</Info>
+
+### Current Level Display
+
+The top-right corner always shows your current level number, helping you track your progress during gameplay.
+
+## Mission Failure
+
+A level fails if you:
+
+<Accordion title="Failure Conditions">
+1. **Plant in Water**: Blink when the target zone is over ocean areas
+2. **Hit Existing Tree**: Plant too close to a tree you've already placed
+
+Each failure type triggers unique visual and audio feedback to help you understand what went wrong.
+</Accordion>
+
+### Restart System
+
+<Note>
+When you fail, you restart from level 1, but your highest level record remains. This creates an endless challenge to beat your personal best.
+</Note>
+
+## Strategy Tips
+
+<Steps>
+  <Step title="Watch the Rotation">
+    Observe the planet's rotation speed and direction before your first blink. Understanding the pattern is key to success.
+  </Step>
+  
+  <Step title="Plan Tree Placement">
+    In higher levels, mentally plan where all trees will go before starting to plant. This prevents accidental collisions.
+  </Step>
+  
+  <Step title="Use the Indicator">
+    The floating tree indicator shows exactly where your next tree will land. Wait for it to position over a safe zone.
+  </Step>
+  
+  <Step title="Stay Calm">
+    Faster rotations can be stressful, but maintaining composure helps you time blinks accurately.
+  </Step>
+</Steps>

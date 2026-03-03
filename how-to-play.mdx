@@ -1,0 +1,144 @@
+---
+title: How to Play
+description: Master eye blink controls and game mechanics to successfully reforest planets in crisis
+---
+
+## Game Objective
+
+Your mission is to plant trees on rotating planets by shooting needles that hit designated tree zones. Each level requires you to plant a specific number of trees while avoiding water zones and existing trees.
+
+<Note>
+  Trees needed per level increases progressively: Level 1 requires 3 trees, Level 2 requires 4 trees, and the count continues to grow based on the formula `base (3) + cycle + position in cycle`.
+</Note>
+
+## Blink Detection
+
+### How It Works
+
+The game uses Apple's Vision framework to track your facial landmarks and detect eye blinks:
+
+1. The front-facing camera captures your face in real-time
+2. Face landmarks are detected, specifically your left and right eyes
+3. Eye Aspect Ratio (EAR) is calculated for both eyes
+4. When both eyes close (EAR < 0.1), the system registers it as "eyes closed"
+5. When you open your eyes again, a blink is counted and a needle is shot
+
+<Info>
+  The Eye Aspect Ratio is calculated using vertical and horizontal distances between eye landmark points: `(vertical1 + vertical2) / (2.0 * horizontal)`
+</Info>
+
+### Calibration Tips
+
+<Steps>
+  <Step title="Position Your Face">
+    Align your face with the camera scanner when prompted during the initial "Verify Identity" screen
+  </Step>
+  <Step title="Ensure Good Lighting">
+    Play in a well-lit environment for accurate eye detection. The camera draws golden outlines around your eyes when detected
+  </Step>
+  <Step title="Practice Blinking">
+    Perform deliberate, complete blinks. Partial blinks or squinting may not register
+  </Step>
+  <Step title="Switch Camera if Needed">
+    Use the camera rotation button in the bottom-right corner to switch between front and back cameras
+  </Step>
+</Steps>
+
+## Gameplay Mechanics
+
+### Shooting Needles
+
+Each time you blink, a needle is shot from the center of the screen toward the rotating planet. Timing is crucial:
+
+- **Hit a tree zone**: Successfully plants a tree and decreases your trees remaining counter
+- **Hit water/ocean zone**: Mission failed - you must restart from Level 1
+- **Hit an existing tree**: Mission failed - you must restart from Level 1
+
+<Warning>
+  Be precise with your timing! Missing the tree zone or hitting water/trees will end your current run.
+</Warning>
+
+### Level Progression
+
+The game features progressive difficulty across levels:
+
+#### Levels 1-5 (Easy)
+- Rotation duration: 4 seconds per full rotation
+- Rotation direction: Counter-clockwise (consistent)
+- Trees needed: 3-7 trees
+
+#### Levels 6-10 (Medium)
+- Rotation duration: 3 seconds per full rotation
+- Rotation direction: Random (left or right)
+- Trees needed: 8-12 trees
+
+#### Levels 11+ (Hard)
+- Rotation duration: 1.5-4 seconds (randomized)
+- Rotation direction: Random (left or right)
+- Trees needed: 13+ trees (increases with level)
+
+<Info>
+  Your highest level achieved is saved automatically using UserDefaults and displayed on the home screen.
+</Info>
+
+### User Interface
+
+**Top Left - Progress Bar**
+- Shows trees remaining vs total pollution (trees needed)
+- Updates in real-time as you plant trees
+
+**Top Right - Level & Sound**
+- Current level number
+- Sound toggle button to mute/unmute background music
+
+**Bottom Right - Camera Switch**
+- Button to rotate between front and back cameras
+
+**Blink Counter**
+- Displays total blinks detected (top left of camera view)
+- Helps you verify the eye detection is working
+
+## Game States
+
+### Initial Blink Alert
+
+When you start playing, a "Blink Alert" appears prompting you to blink. Your first blink dismisses this alert and plants the first tree.
+
+### Level Complete
+
+When you successfully plant all required trees for a level:
+- A "Level Complete" popup appears
+- The game automatically advances to the next level after 1.2 seconds
+- Your highest level is updated if you surpassed your previous record
+
+### Mission Failed
+
+If you hit a water zone or existing tree:
+- A "Mission Failed" popup appears showing your final level
+- Displays whether you achieved a new high score
+- Provides a "Next Mission" button to restart from Level 1
+
+<Note>
+  Different sound effects play based on failure reason: "water" sound for ocean hits, "failed" sound for hitting existing trees.
+</Note>
+
+## Audio Experience
+
+- **Home Screen**: "IntroSpace" background music sets the space exploration mood
+- **Gameplay**: "GameEasy" background music during active play
+- **Success**: Sound effect when completing a level
+- **Failure**: Context-specific sound effects (water splash or general failure)
+
+Use the sound toggle button to mute all audio while keeping the game fully playable.
+
+## Tips for Success
+
+1. **Time your blinks**: Watch the planet rotation and blink when the tree zone is approaching the center
+2. **Practice deliberate blinks**: Quick, complete blinks register more reliably than slow closures
+3. **Stay centered**: Keep your face aligned with the camera for consistent detection
+4. **Monitor the blink counter**: If it's not increasing when you blink, adjust your position or lighting
+5. **Learn the patterns**: Higher levels have randomized rotation, so develop timing intuition
+
+<Warning>
+  The game disables idle timer during gameplay to prevent screen lock. Remember to manually lock your device when finished playing to save battery.
+</Warning>

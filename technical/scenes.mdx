@@ -1,0 +1,419 @@
+---
+title: "SpriteKit Scenes"
+description: "SpriteKit scene classes handling game physics, animations, and collision detection"
+---
+
+## GameScene
+
+The primary SpriteKit scene managing the rotating planet, tree deployment, collision detection, and fail zones.
+
+### Properties
+
+<ParamField path="circle" type="SKSpriteNode">
+  The main rotating planet sprite ("buminew" image, 590x590 points)
+</ParamField>
+
+<ParamField path="needleContainer" type="SKNode">
+  Container node for planted trees, rotates with the planet
+</ParamField>
+
+<ParamField path="treeIndicator" type="SKSpriteNode?">
+  Visual indicator showing where the next tree will be planted
+</ParamField>
+
+<ParamField path="treesShot" type="Int">
+  Number of trees successfully planted in current level
+</ParamField>
+
+<ParamField path="treesTarget" type="Int">
+  Total trees required to complete current level
+</ParamField>
+
+<ParamField path="isFail" type="Bool">
+  Flag preventing further tree deployment after failure
+</ParamField>
+
+### Callbacks
+
+<ParamField path="onFailZoneHit" type="(() -> Void)?">
+  Closure invoked when a tree lands in a forbidden water/ocean zone
+</ParamField>
+
+<ParamField path="onTreeZoneHit" type="(() -> Void)?">
+  Closure invoked when a tree collides with an already-planted tree
+</ParamField>
+
+<ParamField path="onTreeHit" type="(() -> Void)?">
+  Closure invoked when a tree successfully lands on valid terrain
+</ParamField>
+
+### Level Configuration
+
+```swift
+func configureLevel(
+    treesNeeded: Int,
+    rotationDuration: Double,
+    rotateLeft: Bool
+) {
+    treesShot = 0
+    treesTarget = treesNeeded
+    resetNeedles()
+    setupTreeIndicator()
+    treeIndicator?.isHidden = false
+    
+    circle.removeAllActions()
+    
+    let angle: CGFloat = rotateLeft ? -.pi : .pi
+    let rotate = SKAction.rotate(byAngle: angle, duration: rotationDuration)
+    let forever = SKAction.repeatForever(rotate)
+    circle.run(forever)
+}
+```
+
+<Accordion title="Parameters Explained">
+  - **treesNeeded**: Number of trees to plant before level completion
+  - **rotationDuration**: Seconds for one full planet rotation (faster = harder)
+  - **rotateLeft**: Direction of rotation (randomized on higher levels)
+</Accordion>
+
+### Tree Deployment
+
+<Accordion title="shootNeedle() Method">
+  Core game mechanic triggered by eye blinks:
+  
+  ```swift
+  func shootNeedle() {
+      guard remainingTrees > 0 else { return }
+      guard isFail == false else { return }
+      GameMusicManager.shared.playSoundEffect(filename: "TreeSFX")
+      
+      let needle = SKSpriteNode(imageNamed: "pohonnew")
+      treeIndicator?.isHidden = true
+      let needleLength: CGFloat = 70
+      
+      needle.size = CGSize(width: 30, height: needleLength)
+      
+      // Start above the planet
+      let startY = circle.position.y + 300
+      needle.position = CGPoint(x: circle.position.x, y: startY)
+      needle.zRotation = 0
+      addChild(needle)
+      
+      // Target: outer surface of planet
+      let circleRadius: CGFloat = 118
+      let targetPoint = CGPoint(
+          x: circle.position.x,
+          y: circle.position.y + circleRadius + needleLength / 2
+      )
+      
+      let move = SKAction.move(to: targetPoint, duration: 0.18)
+  }
+  ```
+  
+  After movement completes, collision detection runs to check:
+  1. **Fail zones** (water/ocean areas) → triggers `onFailZoneHit`
+  2. **Existing trees** (minimum distance 30 points) → triggers `onTreeZoneHit`
+  3. **Valid terrain** → attaches tree to needleContainer, triggers `onTreeHit`
+</Accordion>
+
+### Collision Detection
+
+```swift
+let stickToCircle = SKAction.run {
+    needle.removeAllActions()
+    
+    // Convert to circle's coordinate space
+    let relativePosition = self.convert(
+        needle.position,
+        to: self.needleContainer
+    )
+    
+    // Check forbidden zones
+    let failZoneNames = [
+        "failZone-1", "failZone-2", "failZone-3", "failZone-4"
+    ]
+    
+    for zoneName in failZoneNames {
+        if let failZone = self.circle.childNode(withName: zoneName),
+            failZone.contains(relativePosition)
+        {
+            let splash = SKSpriteNode(imageNamed: "splash")
+            splash.position = CGPoint(
+                x: needle.position.x,
+                y: needle.position.y - 15
+            )
+            splash.setScale(0.11)
+            self.addChild(splash)
+            
+            needle.removeAllChildren()
+            AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+            self.isFail = true
+            self.onFailZoneHit?()
+            return
+        }
+    }
+    
+    // Check tree collisions
+    for child in self.needleContainer.children {
+        if child.name == "treeZone" {
+            let distance = hypot(
+                child.position.x - relativePosition.x,
+                child.position.y - relativePosition.y
+            )
+            let minAllowedDistance: CGFloat = 30
+            if distance < minAllowedDistance {
+                AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                let crash = SKSpriteNode(imageNamed: "crash")
+                crash.position = CGPoint(
+                    x: needle.position.x + 10,
+                    y: needle.position.y + 15
+                )
+                crash.setScale(0.12)
+                self.addChild(crash)
+                self.onTreeZoneHit?()
+                return
+            }
+        }
+    }
+    
+    // Success - attach tree
+    needle.removeFromParent()
+    needle.position = relativePosition
+    needle.zRotation = -self.circle.zRotation
+    needle.name = "treeZone"
+    self.needleContainer.addChild(needle)
+    
+    self.treesShot += 1
+    self.onTreeHit?()
+}
+```
+
+<Note>
+  Trees are parented to `needleContainer` which rotates with the planet, maintaining their planted positions during rotation.
+</Note>
+
+### Forbidden Zones
+
+<Accordion title="setForbiddenArea() Implementation">
+  Four arc-shaped zones representing water/ocean areas where trees cannot be planted:
+  
+  ```swift
+  func setForbiddenArea() {
+      // Zone 1
+      var failZone = SKShapeNode(
+          path: arcPath(radius: 300, startAngle: 6, endAngle: 6.97).cgPath)
+      failZone.strokeColor = .clear
+      failZone.position = CGPoint(x: 0, y: 0)
+      failZone.name = "failZone-1"
+      circle.addChild(failZone)
+      
+      // Zone 2
+      failZone = SKShapeNode(
+          path: arcPath(radius: 300, startAngle: 3.96, endAngle: 5.30).cgPath)
+      failZone.strokeColor = .clear
+      failZone.name = "failZone-2"
+      circle.addChild(failZone)
+      
+      // Zone 3
+      failZone = SKShapeNode(
+          path: arcPath(radius: 300, startAngle: 4.73, endAngle: 4.88).cgPath)
+      failZone.strokeColor = .clear
+      failZone.zRotation = 45
+      failZone.name = "failZone-3"
+      circle.addChild(failZone)
+      
+      // Zone 4
+      failZone = SKShapeNode(
+          path: arcPath(radius: 300, startAngle: 1.62, endAngle: 1.76).cgPath)
+      failZone.strokeColor = .clear
+      failZone.zRotation = 1
+      failZone.name = "failZone-4"
+      circle.addChild(failZone)
+  }
+  ```
+  
+  Zones are invisible (`strokeColor = .clear`) but active for collision detection.
+</Accordion>
+
+### Tree Indicator Animation
+
+```swift
+private func setupTreeIndicator() {
+    treeIndicator?.removeFromParent()
+    
+    treeIndicator = SKSpriteNode(imageNamed: "pohonnew")
+    guard let indicator = treeIndicator else { return }
+    
+    indicator.size = CGSize(width: 30, height: 70)
+    let startY = circle.position.y + 300
+    indicator.position = CGPoint(x: circle.position.x, y: startY)
+    indicator.zRotation = 0
+    indicator.alpha = 0.7
+    indicator.name = "treeIndicator"
+    
+    addChild(indicator)
+    
+    // Floating animation
+    let floatUp = SKAction.moveBy(x: 0, y: 10, duration: 1.0)
+    let floatDown = SKAction.moveBy(x: 0, y: -10, duration: 1.0)
+    let floatSequence = SKAction.sequence([floatUp, floatDown])
+    let floatForever = SKAction.repeatForever(floatSequence)
+    
+    indicator.run(floatForever)
+}
+```
+
+---
+
+## IntroScene
+
+Narrative SpriteKit scene displaying mission briefing with custom text styling and animated eye symbols.
+
+### Properties
+
+<ParamField path="missionPanel" type="SKSpriteNode">
+  Container node for all mission UI elements
+</ParamField>
+
+<ParamField path="onStartMission" type="(() -> Void)?">
+  Callback invoked when player taps start button (handled in IntroView)
+</ParamField>
+
+### Scene Setup
+
+```swift
+override func didMove(to view: SKView) {
+    self.backgroundColor = .clear
+    view.allowsTransparency = true
+    setupUI()
+}
+
+private func setupUI() {
+    setupMissionPanel()
+}
+
+private func setupMissionPanel() {
+    missionPanel = SKSpriteNode(
+        color: UIColor.clear, 
+        size: CGSize(width: size.width - 40, height: 400)
+    )
+    missionPanel.size = CGSize(width: size.width*2, height: size.height)
+    missionPanel.position = CGPoint(x: size.width/2, y: size.height / 2)
+    missionPanel.zPosition = 5
+    addChild(missionPanel)
+    setupMissionContent()
+}
+```
+
+### Text Styling System
+
+<Accordion title="Selective Bold Text">
+  IntroScene implements custom text styling with selective bolding:
+  
+  ```swift
+  private func setupMissionDescription() {
+      let descriptionLines = [
+          "Target Planet: Earth.",
+          "",
+          "Atmospheric carbon levels have",
+          "surged. Temperatures are rising. Life ",
+          "systems are destabilizing.",
+          "",
+          "Your objective: Deploy carbon-",
+          "capture units via orbital tree pods to",
+          "help reforest high-emission zones."
+      ]
+      
+      let partialBoldWords: [Int: [String]] = [
+          6: ["Your objective"]
+      ]
+      
+      let fullLineBoldIndices: Set<Int> = [0]
+      
+      for (index, line) in descriptionLines.enumerated() {
+          if line.isEmpty { continue }
+          
+          let label = SKLabelNode()
+          
+          if let wordsToBold = partialBoldWords[index] {
+              let attributedString = NSMutableAttributedString(
+                  string: line,
+                  attributes: [
+                      .font: UIFont(name: "Genos", size: 17) ?? UIFont.systemFont(ofSize: 17),
+                      .foregroundColor: UIColor(red: 0.94, green: 0.84, blue: 0.65, alpha: 1.0)
+                  ]
+              )
+              
+              for word in wordsToBold {
+                  let range = (line as NSString).range(of: word)
+                  if range.location != NSNotFound {
+                      attributedString.addAttribute(
+                          .font,
+                          value: UIFont(name: "Genos-Bold", size: 17) ?? UIFont.boldSystemFont(ofSize: 17),
+                          range: range
+                      )
+                  }
+              }
+              
+              label.attributedText = attributedString
+          } else {
+              let shouldBeBold = fullLineBoldIndices.contains(index)
+              let fontName = shouldBeBold ? "Genos-Bold" : "Genos"
+              
+              label.fontName = fontName
+              label.fontSize = 17
+              label.fontColor = UIColor(red: 0.94, green: 0.84, blue: 0.65, alpha: 1.0)
+              label.text = line
+          }
+          
+          label.position = CGPoint(x: 0, y: 170 - CGFloat(index * 20))
+          missionPanel.addChild(label)
+      }
+  }
+  ```
+</Accordion>
+
+### Animated Eyes
+
+<Accordion title="Eye Symbol Creation">
+  Creates two animated eye symbols that blink periodically:
+  
+  ```swift
+  private func createEyeSymbol() -> SKNode {
+      let eyeContainer = SKNode()
+      
+      let eyeOutline = SKShapeNode(ellipseOf: CGSize(width: 40, height: 25))
+      eyeOutline.strokeColor = SKColor(red: 0.94, green: 0.84, blue: 0.65, alpha: 1.0)
+      eyeOutline.lineWidth = 2
+      eyeOutline.fillColor = .clear
+      eyeContainer.addChild(eyeOutline)
+      
+      let pupilSize: CGFloat = 14
+      let pupil = SKShapeNode(circleOfRadius: pupilSize / 2)
+      pupil.fillColor = SKColor(red: 0.94, green: 0.84, blue: 0.65, alpha: 1.0)
+      pupil.strokeColor = SKColor.clear
+      pupil.name = "pupil"
+      eyeContainer.addChild(pupil)
+      
+      return eyeContainer
+  }
+  
+  private func animateEyes(_ eyes: [SKNode]) {
+      for eye in eyes {
+          let blink = SKAction.sequence([
+              SKAction.wait(forDuration: 1.0),
+              SKAction.scaleY(to: 0.1, duration: 0.1),
+              SKAction.scaleY(to: 1.0, duration: 0.1)
+          ])
+          let blinkForever = SKAction.repeatForever(blink)
+          eye.run(blinkForever)
+      }
+  }
+  ```
+  
+  Two eyes positioned at (-30, -150) and (30, -150) relative to mission panel center.
+</Accordion>
+
+<Note>
+  The blinking eyes provide visual reinforcement of the core game mechanic (eye blink detection) while players read the mission briefing.
+</Note>

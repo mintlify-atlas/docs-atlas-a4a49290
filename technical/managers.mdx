@@ -1,0 +1,428 @@
+---
+title: "Manager Classes"
+description: "Singleton managers and shared state classes for music, vision detection, and game data"
+---
+
+## GameMusicManager
+
+Singleton class managing background music and sound effects throughout the game.
+
+### Properties
+
+<ParamField path="shared" type="GameMusicManager">
+  Static singleton instance accessed via `GameMusicManager.shared`
+</ParamField>
+
+<ParamField path="audioPlayer" type="AVAudioPlayer?" private>
+  Audio player for background music (looping)
+</ParamField>
+
+<ParamField path="effectPlayers" type="[AVAudioPlayer]" private>
+  Array of audio players for simultaneous sound effects
+</ParamField>
+
+### Music Control
+
+<Accordion title="playMusic()">
+  Loads and plays background music with infinite looping:
+  
+  ```swift
+  func playMusic(filename: String = "GameEasy", fileExtension: String = "mp3") {
+      guard
+          let url = Bundle.main.url(
+              forResource: filename, withExtension: fileExtension)
+      else {
+          print("🔴 Failed to find music file")
+          return
+      }
+      
+      do {
+          audioPlayer = try AVAudioPlayer(contentsOf: url)
+          audioPlayer?.numberOfLoops = -1  // loop forever
+          audioPlayer?.prepareToPlay()
+          audioPlayer?.play()
+      } catch {
+          print("🔴 Failed to play music: \(error)")
+      }
+  }
+  ```
+  
+  **Parameters:**
+  - `filename`: Name of audio file (default: "GameEasy")
+  - `fileExtension`: File type (default: "mp3")
+  
+  **Music Tracks Used:**
+  - `IntroSpace` - Home menu background
+  - `GameEasy` - Gameplay background
+</Accordion>
+
+<Accordion title="pauseMusic() / resumeMusic()">
+  Control playback state without stopping/reloading:
+  
+  ```swift
+  func pauseMusic() {
+      audioPlayer?.pause()
+  }
+  
+  func resumeMusic() {
+      audioPlayer?.play()
+  }
+  ```
+  
+  Called when:
+  - User toggles mute button
+  - Mission failed popup appears
+  - Level clear popup appears
+</Accordion>
+
+<Accordion title="stopMusic()">
+  Completely stops and deallocates audio player:
+  
+  ```swift
+  func stopMusic() {
+      audioPlayer?.stop()
+      audioPlayer = nil
+  }
+  ```
+  
+  Used when transitioning between major game sections (Home → Game).
+</Accordion>
+
+### Sound Effects
+
+```swift
+func playSoundEffect(filename: String, fileExtension: String = "mp3") {
+    guard
+        let url = Bundle.main.url(
+            forResource: filename, withExtension: fileExtension)
+    else { return }
+    
+    do {
+        let player = try AVAudioPlayer(contentsOf: url)
+        player.volume = 1.0
+        player.prepareToPlay()
+        player.play()
+        effectPlayers.append(player)
+    } catch {
+        print("Error playing sound effect: \(error)")
+    }
+    
+    // Clean up finished players
+    effectPlayers.removeAll { !$0.isPlaying }
+}
+```
+
+<Note>
+  Multiple AVAudioPlayer instances allow overlapping sound effects. Completed players are automatically cleaned up to prevent memory leaks.
+</Note>
+
+**Sound Effects Used:**
+- `TreeSFX` - Tree deployment
+- `success` - Level completion
+- `water` - Failed (hit ocean zone)
+- `failed` - Failed (hit existing tree)
+- `access-granted` - Camera verification success
+
+### Playback State
+
+```swift
+var isPlaying: Bool {
+    return audioPlayer?.isPlaying ?? false
+}
+```
+
+---
+
+## EyeBlinkDetectorVision
+
+Observable class using Apple Vision framework for real-time eye blink detection via device camera.
+
+### Properties
+
+<ParamField path="session" type="AVCaptureSession" private>
+  Camera capture session
+</ParamField>
+
+<ParamField path="previewLayer" type="AVCaptureVideoPreviewLayer?" private>
+  Video preview layer displaying camera feed
+</ParamField>
+
+<ParamField path="overlayLayer" type="CAShapeLayer" private>
+  Layer for drawing eye landmark visualizations
+</ParamField>
+
+<ParamField path="currentCameraPosition" type="AVCaptureDevice.Position" private>
+  Current camera being used (.front or .back)
+</ParamField>
+
+<ParamField path="videoOutput" type="AVCaptureVideoDataOutput" private>
+  Video output for frame-by-frame processing
+</ParamField>
+
+<ParamField path="@Published blinkCount" type="Int">
+  Published property tracking total blinks detected (triggers SwiftUI updates)
+</ParamField>
+
+<ParamField path="isEyeClosed" type="Bool" private>
+  Internal state preventing duplicate blink counts
+</ParamField>
+
+<ParamField path="frameCount" type="Int" private>
+  Frame counter for performance optimization (processes every 3rd frame)
+</ParamField>
+
+<ParamField path="blinkCountLabel" type="UILabel?">
+  Optional UI label for displaying blink count
+</ParamField>
+
+### Camera Setup
+
+<Accordion title="setupCamera()">
+  Configures AVCaptureSession with front/back camera:
+  
+  ```swift
+  func setupCamera(in view: CameraPreviewViewVision, usingFrontCamera: Bool) {
+      session.beginConfiguration()
+      session.sessionPreset = .high
+      
+      session.inputs.forEach { session.removeInput($0) }
+      currentCameraPosition = usingFrontCamera ? .front : .back
+      
+      guard let device = getCamera(for: currentCameraPosition),
+          let input = try? AVCaptureDeviceInput(device: device)
+      else {
+          session.commitConfiguration()
+          return
+      }
+      
+      if session.canAddInput(input) {
+          session.addInput(input)
+      }
+      
+      session.outputs.forEach { session.removeOutput($0) }
+      
+      videoOutput.setSampleBufferDelegate(
+          self, queue: DispatchQueue(label: "videoQueue"))
+      if session.canAddOutput(videoOutput) {
+          session.addOutput(videoOutput)
+      }
+      
+      session.commitConfiguration()
+      
+      // Setup preview layer
+      if previewLayer == nil {
+          previewLayer = AVCaptureVideoPreviewLayer(session: session)
+          previewLayer?.videoGravity = .resizeAspectFill
+          if let previewLayer = previewLayer {
+              view.layer.insertSublayer(previewLayer, at: 0)
+          }
+      }
+      
+      DispatchQueue.global(qos: .userInitiated).async {
+          self.session.startRunning()
+      }
+  }
+  ```
+</Accordion>
+
+### Vision Detection
+
+<Accordion title="captureOutput() - Frame Processing">
+  Processes video frames using VNDetectFaceLandmarksRequest:
+  
+  ```swift
+  func captureOutput(
+      _ output: AVCaptureOutput, 
+      didOutput sampleBuffer: CMSampleBuffer,
+      from connection: AVCaptureConnection
+  ) {
+      frameCount += 1
+      guard frameCount % 3 == 0 else { return } // Process every 3rd frame
+      
+      guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+      else { return }
+      
+      let request = VNDetectFaceLandmarksRequest {
+          [weak self] request, error in
+          guard let self = self,
+              let results = request.results as? [VNFaceObservation],
+              let previewLayer = self.previewLayer
+          else { return }
+          
+          DispatchQueue.main.async {
+              self.overlayLayer.sublayers?.forEach {
+                  $0.removeFromSuperlayer()
+              }
+              
+              if let largestFace = results.max(by: {
+                  ($0.boundingBox.width * $0.boundingBox.height)
+                      < ($1.boundingBox.width * $1.boundingBox.height)
+              }) {
+                  let face = largestFace
+                  
+                  if let landmarks = face.landmarks,
+                      let leftEye = landmarks.leftEye,
+                      let rightEye = landmarks.rightEye
+                  {
+                      let leftEAR = self.computeEyeAspectRatio(leftEye)
+                      let rightEAR = self.computeEyeAspectRatio(rightEye)
+                      
+                      if leftEAR < 0.1 && rightEAR < 0.1 {
+                          if !self.isEyeClosed {
+                              self.isEyeClosed = true
+                          }
+                      } else {
+                          if self.isEyeClosed {
+                              self.blinkCount += 1
+                              DispatchQueue.main.async {
+                                  self.blinkCountLabel?.text = "Blink: \(self.blinkCount)"
+                              }
+                              self.isEyeClosed = false
+                          }
+                      }
+                  }
+              }
+          }
+      }
+      
+      let handler = VNImageRequestHandler(
+          cvPixelBuffer: pixelBuffer,
+          orientation: currentCameraPosition == .front
+              ? .leftMirrored : .right, 
+          options: [:])
+      try? handler.perform([request])
+  }
+  ```
+  
+  **Performance Optimization:** Only processes every 3rd frame to reduce CPU load.
+</Accordion>
+
+### Eye Aspect Ratio (EAR)
+
+<Accordion title="computeEyeAspectRatio()">
+  Calculates eye openness using geometric formula:
+  
+  ```swift
+  private func computeEyeAspectRatio(_ eye: VNFaceLandmarkRegion2D) -> CGFloat {
+      guard eye.pointCount >= 6 else { return 0 }
+      
+      let p2 = eye.normalizedPoints[1]
+      let p6 = eye.normalizedPoints[5]
+      let p3 = eye.normalizedPoints[2]
+      let p5 = eye.normalizedPoints[4]
+      let p1 = eye.normalizedPoints[0]
+      let p4 = eye.normalizedPoints[3]
+      
+      let vertical1 = hypot(p2.x - p6.x, p2.y - p6.y)
+      let vertical2 = hypot(p3.x - p5.x, p3.y - p5.y)
+      let horizontal = hypot(p1.x - p4.x, p1.y - p4.y)
+      
+      return (vertical1 + vertical2) / (2.0 * horizontal)
+  }
+  ```
+  
+  **Threshold:** EAR < 0.1 for both eyes indicates closed state.
+  
+  **Blink Detection Logic:**
+  1. Both eyes EAR < 0.1 → Set `isEyeClosed = true`
+  2. Either eye EAR ≥ 0.1 AND `isEyeClosed == true` → Increment `blinkCount`, set `isEyeClosed = false`
+</Accordion>
+
+### Camera Switching
+
+```swift
+@objc func switchCameraTapped() {
+    session.beginConfiguration()
+    session.inputs.forEach { session.removeInput($0) }
+    
+    currentCameraPosition = (currentCameraPosition == .back) ? .front : .back
+    
+    guard let newDevice = getCamera(for: currentCameraPosition),
+        let newInput = try? AVCaptureDeviceInput(device: newDevice)
+    else {
+        session.commitConfiguration()
+        return
+    }
+    
+    if session.canAddInput(newInput) {
+        session.addInput(newInput)
+    }
+    
+    session.commitConfiguration()
+}
+```
+
+<Note>
+  The detector draws gold-colored outlines around detected eyes using `CAShapeLayer` for visual feedback during detection.
+</Note>
+
+### Session Management
+
+```swift
+func stopSession() {
+    session.stopRunning()
+}
+```
+
+Called when CameraViewVision is dismantled to properly clean up resources.
+
+---
+
+## GameData
+
+Observable class managing persistent game state across views.
+
+### Implementation
+
+```swift
+class GameData: ObservableObject {
+    @Published var highestLevel: Int = UserDefaults.standard.savedHighestLevel
+}
+```
+
+<ParamField path="@Published highestLevel" type="Int">
+  Highest level achieved by player, persisted to UserDefaults
+</ParamField>
+
+### Usage
+
+```swift
+struct ContentView: View {
+    @StateObject private var gameData = GameData()
+    
+    var body: some View {
+        HomeView()
+            .environmentObject(gameData)
+    }
+}
+```
+
+<Note>
+  GameData is injected as an environment object at the root level (ContentView) and accessed throughout the app via `@EnvironmentObject var gameData: GameData`.
+</Note>
+
+### Persistence
+
+Highest level is automatically persisted via UserDefaults extension:
+
+```swift
+extension UserDefaults {
+    private enum Keys {
+        static let highestLevel = "highestLevel"
+    }
+    
+    var savedHighestLevel: Int {
+        get { integer(forKey: Keys.highestLevel) }
+        set { set(newValue, forKey: Keys.highestLevel) }
+    }
+}
+```
+
+Updated in GameView when level is completed:
+
+```swift
+if currentLevel - 1 > gameData.highestLevel {
+    gameData.highestLevel = currentLevel - 1
+    UserDefaults.standard.savedHighestLevel = gameData.highestLevel
+}
+```
