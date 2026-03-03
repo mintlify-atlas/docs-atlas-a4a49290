@@ -1,0 +1,57 @@
+{
+  "projectType": "saas",
+  "projectName": "Reforestation Saga",
+  "projectDescription": "An iOS game using eye blink detection to plant trees and save planets from environmental crisis",
+  "theme": "palm",
+  "primaryColor": "#F0D6A5",
+  "lightColor": "#A8E6CF",
+  "darkColor": "#4A7C59",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Overview",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["introduction", "how-to-play", "installation"]
+          },
+          {
+            "group": "Game Features",
+            "pages": ["features/eye-blink-control", "features/progressive-levels", "features/scoring-system"]
+          }
+        ]
+      },
+      {
+        "tab": "Technical Guide",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": ["technical/overview", "technical/eye-detection", "technical/game-engine"]
+          },
+          {
+            "group": "Components",
+            "pages": ["technical/views", "technical/scenes", "technical/managers"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Eye blink detection using Vision framework",
+    "Progressive difficulty with rotating planet mechanics",
+    "Level-based gameplay with increasing tree requirements",
+    "Camera-based user verification system",
+    "Haptic feedback and sound effects",
+    "Persistent high score tracking"
+  ],
+  "publicApiSurface": [
+    "EyeBlinkDetectorVision",
+    "GameScene",
+    "GameView",
+    "HomeView",
+    "CameraCheckView",
+    "GameMusicManager",
+    "treesForLevel()",
+    "computeEyeAspectRatio()"
+  ]
+}
